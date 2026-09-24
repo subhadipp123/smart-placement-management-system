@@ -139,3 +139,126 @@ CREATE TABLE public.job_required_skills (
         FOREIGN KEY (skill_id)
         REFERENCES public.skills (skill_id)
 );
+
+-- Applications: records students applying to jobs.
+
+CREATE TABLE public.applications (
+    application_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    student_id BIGINT NOT NULL,
+
+    job_id BIGINT NOT NULL,
+
+    status VARCHAR(20) NOT NULL DEFAULT 'submitted',
+
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT applications_student_job_unique
+        UNIQUE (student_id, job_id),
+
+    CONSTRAINT applications_student_fk
+        FOREIGN KEY (student_id)
+        REFERENCES public.students (student_id),
+
+    CONSTRAINT applications_job_fk
+        FOREIGN KEY (job_id)
+        REFERENCES public.jobs (job_id),
+
+    CONSTRAINT applications_status_allowed
+        CHECK (
+            status IN (
+                'submitted',
+                'shortlisted',
+                'interviewing',
+                'selected',
+                'rejected',
+                'withdrawn'
+            )
+        )
+);
+
+-- Interviews: individual rounds belonging to an application.
+
+CREATE TABLE public.interviews (
+    interview_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    application_id BIGINT NOT NULL,
+
+    round_number INTEGER NOT NULL,
+
+    round_name VARCHAR(100) NOT NULL,
+
+    scheduled_at TIMESTAMPTZ NOT NULL,
+
+    result VARCHAR(20) NOT NULL DEFAULT 'pending',
+
+    feedback TEXT,
+
+    CONSTRAINT interviews_application_round_unique
+        UNIQUE (application_id, round_number),
+
+    CONSTRAINT interviews_application_fk
+        FOREIGN KEY (application_id)
+        REFERENCES public.applications (application_id),
+
+    CONSTRAINT interviews_round_number_positive
+        CHECK (round_number > 0),
+
+    CONSTRAINT interviews_round_name_not_blank
+        CHECK (TRIM(round_name) <> ''),
+
+    CONSTRAINT interviews_result_allowed
+        CHECK (
+            result IN (
+                'pending',
+                'passed',
+                'failed',
+                'absent',
+                'cancelled'
+            )
+        )
+);
+
+-- Offers: offers made for applications and the student's response.
+-- Compensation is recorded as annual CTC in Indian rupees.
+
+CREATE TABLE public.offers (
+    offer_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    application_id BIGINT NOT NULL,
+
+    annual_ctc_inr NUMERIC(12, 2) NOT NULL,
+
+    status VARCHAR(10) NOT NULL DEFAULT 'pending',
+
+    offered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    responded_at TIMESTAMPTZ,
+
+    CONSTRAINT offers_application_unique
+        UNIQUE (application_id),
+
+    CONSTRAINT offers_application_fk
+        FOREIGN KEY (application_id)
+        REFERENCES public.applications (application_id),
+
+    CONSTRAINT offers_ctc_positive
+        CHECK (
+            annual_ctc_inr > 0
+            AND annual_ctc_inr <> 'NaN'::NUMERIC
+        ),
+
+    CONSTRAINT offers_status_allowed
+        CHECK (status IN ('pending', 'accepted', 'declined')),
+
+    CONSTRAINT offers_response_consistent
+        CHECK (
+            (status = 'pending' AND responded_at IS NULL)
+            OR
+            (
+                status IN ('accepted', 'declined')
+                AND responded_at IS NOT NULL
+                AND responded_at >= offered_at
+            )
+        )
+);
