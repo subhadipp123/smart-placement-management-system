@@ -262,3 +262,4 @@ CREATE TABLE public.offers (
             )
         )
 );
+
