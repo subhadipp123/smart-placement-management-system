@@ -22,3 +22,15 @@ Track campus job openings, student applications, interview rounds, offers, and p
 - What was each applicant's latest interview result?
 - Which students received multiple offers?
 - How many students were placed in a graduating batch?
+
+## Application status transitions
+
+- New applications start as submitted.
+- submitted can change to shortlisted, rejected, or withdrawn.
+- shortlisted can change to interviewing, rejected, or withdrawn.
+- interviewing can change to selected, rejected, or withdrawn.
+- selected, rejected, and withdrawn are terminal application statuses.
+- Repeating the current status is rejected.
+- Reopening a terminal application is outside the project scope.
+- selected means successful selection, not offer acceptance.
+- Offer responses are managed separately in the offers table.
