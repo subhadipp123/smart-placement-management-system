@@ -34,3 +34,24 @@ Track campus job openings, student applications, interview rounds, offers, and p
 - Reopening a terminal application is outside the project scope.
 - selected means successful selection, not offer acceptance.
 - Offer responses are managed separately in the offers table.
+
+## Interview scheduling
+
+- Interviews are scheduled through the scheduling function.
+- The application must exist and currently be interviewing.
+- Round numbers must be positive and unique within an application.
+- Round numbers do not have to be consecutive.
+- Each interview needs a nonblank round name and a scheduled timestamp.
+- New interviews start with result pending.
+- Historical scheduled timestamps are allowed for recorded and sample data.
+
+## Interview results
+
+- Results are recorded through the interview-result function.
+- The application must currently be interviewing.
+- A pending round can become passed, failed, absent, or cancelled.
+- A completed round cannot be overwritten through this function.
+- Feedback is optional.
+- Recording a result does not automatically change application status.
+- Result corrections and real-time scheduling checks are outside
+  the current project scope.
