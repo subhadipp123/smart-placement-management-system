@@ -35,9 +35,6 @@ BEGIN
 END;
 $$;
 
--- Change an application's status through the allowed workflow.
--- Returns the new status after a successful update.
-
 CREATE OR REPLACE FUNCTION public.change_application_status(
     p_application_id BIGINT,
     p_new_status TEXT
@@ -48,7 +45,7 @@ AS $$
 DECLARE
     v_current_status TEXT;
 BEGIN
-    -- Lock this application until the surrounding transaction ends.
+    -- Lock the application before checking or changing its state.
     SELECT a.status
     INTO v_current_status
     FROM public.applications AS a
@@ -62,7 +59,6 @@ BEGIN
             USING ERRCODE = 'P0002';
     END IF;
 
-    -- Reject NULL and unknown status values.
     IF p_new_status IS NULL
        OR p_new_status NOT IN (
            'submitted',
@@ -79,7 +75,7 @@ BEGIN
             USING ERRCODE = '23514';
     END IF;
 
-    -- Check the requested transition against the workflow.
+    -- Enforce the allowed status transitions.
     IF NOT (
         (
             v_current_status = 'submitted'
@@ -109,6 +105,36 @@ BEGIN
             p_new_status,
             p_application_id
             USING ERRCODE = '23514';
+    END IF;
+
+    -- Additional requirements apply when selecting an application.
+    IF p_new_status = 'selected' THEN
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM public.interviews AS i
+            WHERE i.application_id = p_application_id
+        )
+        THEN
+            RAISE EXCEPTION
+                'Cannot select application %: at least one interview round is required.',
+                p_application_id
+                USING ERRCODE = '23514';
+        END IF;
+
+        IF EXISTS (
+            SELECT 1
+            FROM public.interviews AS i
+            WHERE i.application_id = p_application_id
+              AND i.result <> 'passed'
+        )
+        THEN
+            RAISE EXCEPTION
+                'Cannot select application %: every interview round must be passed.',
+                p_application_id
+                USING ERRCODE = '23514';
+        END IF;
+
     END IF;
 
     UPDATE public.applications
@@ -261,5 +287,136 @@ BEGIN
     WHERE interview_id = v_interview_id;
 
     RETURN p_result;
+END;
+$$;
+
+-- Create a pending offer for a selected application.
+-- Returns the generated offer ID.
+
+CREATE OR REPLACE FUNCTION public.create_offer(
+    p_application_id BIGINT,
+    p_annual_ctc_inr NUMERIC,
+    p_offered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+)
+RETURNS BIGINT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_application_status TEXT;
+    v_offer_id BIGINT;
+BEGIN
+    -- Coordinate offer creation with application-status operations.
+    SELECT a.status
+    INTO v_application_status
+    FROM public.applications AS a
+    WHERE a.application_id = p_application_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Application % does not exist.',
+            p_application_id
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    IF v_application_status <> 'selected' THEN
+        RAISE EXCEPTION
+            'Cannot create offer: application % has status %, expected selected.',
+            p_application_id,
+            v_application_status
+            USING ERRCODE = '23514';
+    END IF;
+
+    INSERT INTO public.offers AS o (
+        application_id,
+        annual_ctc_inr,
+        status,
+        offered_at,
+        responded_at
+    )
+    VALUES (
+        p_application_id,
+        p_annual_ctc_inr,
+        'pending',
+        p_offered_at,
+        NULL
+    )
+    RETURNING o.offer_id INTO v_offer_id;
+
+    RETURN v_offer_id;
+END;
+$$;
+
+-- Accept or decline a pending offer.
+-- Returns the saved response status.
+
+CREATE OR REPLACE FUNCTION public.respond_to_offer(
+    p_offer_id BIGINT,
+    p_response TEXT,
+    p_responded_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_current_status TEXT;
+    v_offered_at TIMESTAMPTZ;
+BEGIN
+    -- Lock the offer while checking and recording its response.
+    SELECT
+        o.status,
+        o.offered_at
+    INTO
+        v_current_status,
+        v_offered_at
+    FROM public.offers AS o
+    WHERE o.offer_id = p_offer_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION
+            'Offer % does not exist.',
+            p_offer_id
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    IF p_response IS NULL
+       OR p_response NOT IN ('accepted', 'declined')
+    THEN
+        RAISE EXCEPTION
+            'Invalid offer response: %. Use accepted or declined.',
+            p_response
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF v_current_status <> 'pending' THEN
+        RAISE EXCEPTION
+            'Cannot respond to offer %: current status is %, expected pending.',
+            p_offer_id,
+            v_current_status
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF p_responded_at IS NULL THEN
+        RAISE EXCEPTION
+            'Response timestamp is required for offer %.',
+            p_offer_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF p_responded_at < v_offered_at THEN
+        RAISE EXCEPTION
+            'Response timestamp cannot precede the offer timestamp for offer %.',
+            p_offer_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    UPDATE public.offers
+    SET
+        status = p_response,
+        responded_at = p_responded_at
+    WHERE offer_id = p_offer_id;
+
+    RETURN p_response;
 END;
 $$;

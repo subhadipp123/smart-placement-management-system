@@ -55,3 +55,33 @@ Track campus job openings, student applications, interview rounds, offers, and p
 - Recording a result does not automatically change application status.
 - Result corrections and real-time scheduling checks are outside
   the current project scope.
+
+  ## Selection requirements
+
+- Selection is allowed only from the interviewing status.
+- The application must have at least one interview round.
+- Every recorded interview round must have result passed.
+- A pending, failed, absent, or cancelled round blocks selection.
+- Passing all recorded rounds permits selection but does not
+  automatically select the application.
+
+  ## Offer creation
+
+- Offers are created through the offer-creation function.
+- The application must currently be selected.
+- Each application can have at most one offer.
+- New offers start as pending, with no response timestamp.
+- Annual CTC is recorded in Indian rupees.
+- Internship-role sample offers represent full-time conversion
+  packages; internship stipends are outside the current schema.
+- Receiving an offer does not count as placement until it is accepted.
+
+## Offer responses
+
+- Offer responses are recorded through the response function.
+- Only pending offers can be accepted or declined.
+- A response timestamp is required and cannot precede the offer timestamp.
+- Accepted and declined responses cannot be overwritten through this function.
+- Responding to an offer does not change the application's selected status.
+- A student is placed when they have at least one accepted offer.
+- Multiple accepted offers still count as one placed student.
